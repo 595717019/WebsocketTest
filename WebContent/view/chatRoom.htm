@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <title>Websocket示例</title>
+<style type="text/css">
+.marTop {
+	margin-top: 10px;
+}
+</style>
 <script type="text/javascript" src="view/js/jquery.js"></script>
 <script type="text/javascript" src="view/js/sockjs.min.js"></script>
 <script type="text/javascript">
@@ -25,19 +30,23 @@
 				+ "打开连接成功.<br/>";
 	}
 
+	//发送信息
 	function onMessage(event) {
 		if (typeof event.data == 'string') {
 			var element = document.createElement("p");
 			element.innerHTML = event.data;
 			document.getElementById("plane").appendChild(element);
+			document.getElementById('plane').scrollTop = plane.scrollHeight;
 		} else {
 			var reader = new FileReader();
 			reader.onload = function(eve) {
 				if (eve.target.readyState == FileReader.DONE) {
 					var img = document.createElement("img");
 					img.src = this.result;
-					img.style.width = '400px';
+					img.className = 'my_img';
+					img.style.width = '500px';
 					document.getElementById("plane").appendChild(img);
+					document.getElementById('plane').scrollTop = plane.scrollHeight;
 				}
 			};
 			reader.readAsDataURL(event.data);
@@ -49,7 +58,7 @@
 		console.log(event.reason)
 		document.getElementById("plane").innerHTML = document
 				.getElementById("plane").innerHTML
-				+ "关闭连接成功.<br/>";
+				+ "关闭连接成功.";
 	}
 
 	function doSend() {
@@ -65,6 +74,7 @@
 		}
 	}
 
+	//发送文件
 	function sendFile(isWithText) {
 		var inputElement = document.getElementById("file");
 		var fileList = inputElement.files;
@@ -118,21 +128,124 @@
 	function clean() {
 		document.getElementById("plane").innerHTML = "";
 	}
+	
+	//剪切板
+	$(function() {
+		$('#plane').scrollTop($('#plane')[0].scrollHeight+500);
+		document.addEventListener(
+			'paste',
+			function(event) {
+				console.log(event)
+				var isChrome = false;
+				if (event.clipboardData || event.originalEvent) {
+					//not for ie11 某些chrome版本使用的是event.originalEvent
+					var clipboardData = (event.clipboardData || event.originalEvent.clipboardData);
+					if (clipboardData.items) {//chrome提供了访问粘贴板中二进制数据的接口
+						// for chrome
+						var items = clipboardData.items, 
+							len = items.length,
+							blob = null;
+							isChrome = true;
+						//items.length比较有意思，初步判断是根据mime类型来的，即有几种mime类型，长度就是几（待验证）
+						//如果粘贴纯文本，那么len=1，如果粘贴网页图片，len=2, items[0].type = 'text/plain', items[1].type = 'image/*'
+						//如果使用截图工具粘贴图片，len=1, items[0].type = 'image/png'
+						//如果粘贴纯文本+HTML，len=2, items[0].type = 'text/plain', items[1].type = 'text/html'
+						// console.log('len:' + len);
+						// console.log(items[0]);
+						// console.log(items[1]);
+						// console.log( 'items[0] kind:', items[0].kind );
+						// console.log( 'items[0] MIME type:', items[0].type );
+						// console.log( 'items[1] kind:', items[1].kind );
+						// console.log( 'items[1] MIME type:', items[1].type );
+
+						//阻止默认行为即不让剪贴板内容在p中显示出来
+						event.preventDefault();
+
+						//在items里找粘贴的image,据上面分析,需要循环
+						for (var i = 0; i < len; i++) {
+							if (items[i].type.indexOf("image") !== -1) {
+								//getAsFile() 此方法只是living standard firefox ie11 并不支持
+								blob = items[i].getAsFile();
+								uploadImgFromPaste(blob, 'paste',isChrome);
+							}
+						}
+
+						/*if ( blob !== null ) {
+						 var reader = new FileReader();
+						 reader.onload = function (event) {
+						  // event.target.result 即为图片的Base64编码字符串
+						  var base64_str = event.target.result;//获得图片base64字符串
+						  //可以在这里写上传逻辑 直接将base64编码的字符串上传（可以尝试传入blob对象，看看后台程序能否解析）
+						 uploadImgFromPaste(base64_str, 'paste', isChrome);
+						 }
+						 reader.readAsDataURL(blob);//传入blob对象,读取文件
+						}*/
+					} else {
+						//for firefox
+						setTimeout(
+								function() {
+									//设置setTimeout的原因是为了保证图片先插入到p里，然后去获取值
+									var imgList = document.querySelectorAll('#message img'), len = imgList.length, src_str = '', i;
+									for (i = 0; i < len; i++) {
+										if (imgList[i].className !== 'my_img') {
+											//如果是截图那么src_str就是base64 如果是复制的其他网页图片那么src_str就是此图片在别人服务器的地址
+											src_str = imgList[i].src;
+										}
+									}
+									uploadImgFromPaste(src_str,'paste', isChrome);
+								}, 1);
+					}
+				} else {
+					//for ie11
+					setTimeout(
+							function() {
+								var imgList = document.querySelectorAll('#message img'), len = imgList.length, src_str = '', i;
+								for (i = 0; i < len; i++) {
+									if (imgList[i].className !== 'my_img') {
+										src_str = imgList[i].src;
+									}
+								}
+								uploadImgFromPaste(src_str,'paste', isChrome);
+							}, 1);
+				}
+			})
+
+		//屏幕截图发送
+		function uploadImgFromPaste(file, type, isChrome) {
+			//发送二进制表示的文件
+			websocket.send(file.lastModified+"_"+file.name + ":fileStart");
+			var reader = new FileReader();
+			//以二进制形式读取文件
+			reader.readAsArrayBuffer(file);
+			//文件读取完毕后该函数响应
+			reader.onload = function loaded(evt) {
+				var blob = evt.target.result;
+				//发送二进制表示的文件
+				websocket.send(blob);
+				websocket.send(file.lastModified+"_"+file.name+ ":fileFinishSingle");
+			}
+		}
+	});
 </script>
 </head>
 <body>
 	<div>
 		<button id="disconnect" onclick="disconnect()">关闭连接</button>
 		<button id="reconnect" onclick="reconnect()">重新连接</button>
-		<button id="send" onclick="doSend()">发送</button>
-		<button id="clean" onclick="clean()">清除</button>
-		<!-- <br>
-        <input type="button" value="sendFile" onclick="sendFile()"/> -->
-		<input type="file" id="file" />
 	</div>
-	<div>
-		<input id="message" type="text" style="width: 350px" />
+	<div class="marTop" id="plane" style="border: 1px solid black; width: 800px; height: 500px; overflow-x:hidden;overflow-y:scroll; padding: 5px;">
 	</div>
-	<div id="plane"></div>
+	<div class="marTop">
+		<input type="file" id="file" accept="image/*"/><br /> <br />
+		<textarea id="message" rows="5" cols="100" style="width: 800px; resize: none; padding: 10px;"></textarea>
+	</div>
+	<div class="marTop" style="width: 800px;">
+		<div style="float: right;">
+			<button id="clean" onclick="clean()">清除聊天记录</button>
+			<!-- <button id="send" onclick="sendFile()">发送图片</button> -->
+			<button id="send" onclick="doSend()">发送文字和图片</button>
+		</div>
+	</div>
+
 </body>
 </html>

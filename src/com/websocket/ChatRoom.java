@@ -58,7 +58,7 @@ public class ChatRoom extends AbstractWebSocketHandler {
         String payload = message.getPayload();
         String textString;
         try {
-            if (payload.endsWith(":fileStart")) {
+            if (payload.endsWith(":fileStart")) {//文件
                 output = new FileOutputStream(new File(filePath + payload.split(":")[0]));
             } else if (payload.endsWith(":fileFinishSingle")) {
                 output.close();
